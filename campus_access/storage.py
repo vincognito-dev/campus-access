@@ -17,7 +17,7 @@ class RequestRegistry:
             
         allowed_types = {"visitor", "student", "staff"}
         if card_type not in allowed_types:
-            raise ValueError(f"Invalid card type. Allowed: {list(allowed_types)}")
+            raise ValueError("Invalid card type.")
 
         req_id = f"A{self._next_id_numeric:03d}"
         
@@ -33,15 +33,20 @@ class RequestRegistry:
 
     def get_request(self, request_id: str) -> dict:
         if request_id not in self._requests:
-            raise KeyError(f"Request ID '{request_id}' not found.")
-        return dict(self._requests[request_id])
+            raise ValueError(f"Request ID '{request_id}' not found.")
+        # Return the actual dictionary reference so status updates save dynamically
+        return self._requests[request_id]
 
     def list_all(self) -> list:
-        return [dict(v) for v in self._requests.values()]
+        return list(self._requests.values())
 
     def save_requests(self, path: str):
         with open(path, 'w', encoding='utf-8') as f:
-            json.dump(self._requests, f, indent=4)
+            # Save both the requests and the next tracking ID
+            json.dump({
+                "requests": self._requests,
+                "next_id_numeric": self._next_id_numeric
+            }, f, indent=4)
 
     def load_requests(self, path: str):
         if not os.path.exists(path):
@@ -53,14 +58,20 @@ class RequestRegistry:
                 raise ValueError("JSON file is empty.")
             data = json.loads(raw_content)
 
-        if not isinstance(data, dict):
+        if "requests" in data and "next_id_numeric" in data:
+            requests_dict = data["requests"]
+            self._next_id_numeric = int(data["next_id_numeric"])
+        else:
+            requests_dict = data
+
+        if not isinstance(requests_dict, dict):
             raise ValueError("Invalid format: Root component must be a dictionary object.")
 
         temp_requests = {}
         highest_id = 0
         id_pattern = re.compile(r"^A([0-9]{3})$")
 
-        for k, v in data.items():
+        for k, v in requests_dict.items():
             match = id_pattern.match(k)
             if not match:
                 raise ValueError(f"Malformed request ID structure key: {k}")
@@ -94,4 +105,5 @@ class RequestRegistry:
             }
 
         self._requests = temp_requests
-        self._next_id_numeric = highest_id + 1
+        if "next_id_numeric" not in data:
+            self._next_id_numeric = highest_id + 1

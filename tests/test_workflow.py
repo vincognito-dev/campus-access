@@ -2,7 +2,7 @@ import unittest
 import os
 import json
 from campus_access.storage import RequestRegistry
-from workflow import WorkflowManager
+from campus_access.workflow import WorkflowManager
 
 class TestCampusAccessSystem(unittest.TestCase):
     def setUp(self):
@@ -51,7 +51,7 @@ class TestCampusAccessSystem(unittest.TestCase):
         rid = self.registry.create_request("F001", "staff")
         self.workflow.approve_request(rid, "M01")
         self.assertEqual(self.registry.get_request(rid)["status"], "approved")
-        
+
         self.workflow.issue_card(rid)
         self.assertEqual(self.registry.get_request(rid)["status"], "issued")
         
