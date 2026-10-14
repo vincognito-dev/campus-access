@@ -1,3 +1,6 @@
+__pycache__/
+.pytest_cache/
+requests.json
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -218,3 +221,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+__pycache__/
+*.pyc
+requests.json
+.vscode/
+.idea/
