@@ -24,13 +24,12 @@ _requests = {}
 
 # ---------- ID generation ----------
 def next_id():
-    def _next_id():
-        highest = 0
-        for request_id in _requests:
-            number = int(request_id[len(ID_PREFIX):])
-            if number > highest:
-                highest = number
-        return f"{ID_PREFIX}{highest + 1:0{ID_DIGIT_COUNT}d}"
+    highest = 0
+    for request_id in _requests:
+        number = int(request_id[len(ID_PREFIX):])
+        if number > highest:
+            highest = number
+    return f"{ID_PREFIX}{highest + 1:0{ID_DIGIT_COUNT}d}"
 print(next_id())
 # ---------- Create ----------
 def create_request(fellow_id, card_type):
@@ -44,22 +43,17 @@ def create_request(fellow_id, card_type):
         "status": "requested",
         "approved_by": None
     }
-    _requests[requested_id] = record
-    return dict(record)
-
+    _requests[request_id] = requested
+    return dict(requested)
 
 # ---------- Lookup (read-only) ----------
 def get_request(request_id):
-    def get_request(request_id):
     validate_request_id(request_id)
 
     if request_id not in _requests:
         raise ValueError(f"Request {request_id} not found")
 
     return dict(_requests[request_id])
-
-
-
 # ---------- Update contract for Engineer B ----------
 def update_request(request_id, **changes):
     validate_request_id(request_id)
