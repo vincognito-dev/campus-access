@@ -55,7 +55,6 @@ def run_menu() -> None:
                 print(request)
             except ValueError as exc:
                 print(f"Error: {exc}")
-
         elif option == 3:
             request_id = input("Request ID: ").strip()
             approved_by = input("Approver ID: ").strip()
