@@ -1,90 +1,198 @@
+"""Tests for campus_access/workflow.py (Engineer B).
+
+Run with:  python -m unittest tests.test_workflow -v
+       or: python -m unittest discover -v
+No third-party packages needed. Uses a fake storage so the tests don't
+depend on storage.py internals.
+Assumes update_request(request_id, **fields) returns the updated record.
+"""
+
 import unittest
-import os
-import json
-from campus_access.storage import RequestRegistry
-from campus_access.workflow import WorkflowManager
+from unittest import mock
 
-class TestCampusAccessSystem(unittest.TestCase):
-    def setUp(self):
-        self.registry = RequestRegistry()
-        self.workflow = WorkflowManager(self.registry)
-        self.test_file = "test_data_output.json"
+from campus_access import workflow
 
-    def tearDown(self):
-        if os.path.exists(self.test_file):
-            os.remove(self.test_file)
 
-    # 1. Valid registration check (A1 & Case 1)
-    def test_valid_creation(self):
-        rid = self.registry.create_request("F001", "visitor")
-        self.assertEqual(rid, "A001")
-        req = self.registry.get_request(rid)
-        self.assertEqual(req["status"], "requested")
-        self.assertIsNone(req["approved_by"])
+# ---------- Fakes ----------
+class FakeStorage:
+    def __init__(self, records):
+        self.records = records
+        self.update_calls = []
 
-    # 2. Rejection configurations check (A2)
-    def test_invalid_card_type(self):
+    def get_request(self, request_id):
+        if request_id not in self.records:
+            raise KeyError(request_id)
+        return dict(self.records[request_id])  # copy, like a real read
+
+    def update_request(self, request_id, **fields):
+        self.update_calls.append((request_id, fields))
+        self.records[request_id].update(fields)
+        return dict(self.records[request_id])
+
+
+def fake_validate_approver(approved_by):
+    if not approved_by or not str(approved_by).strip():
+        raise ValueError("Invalid approver")
+
+
+def make(status, approved_by=None, request_id=1):
+    return {request_id: {"id": request_id, "status": status, "approved_by": approved_by}}
+
+
+class WorkflowTestCase(unittest.TestCase):
+    def install(self, records):
+        """Swap in a FakeStorage and fake validator for this test."""
+        fake = FakeStorage(records)
+        p1 = mock.patch.object(workflow, "storage", fake)
+        p2 = mock.patch.object(workflow, "validate_approver", fake_validate_approver)
+        p1.start()
+        p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
+        return fake
+
+
+# ---------- ALLOWED_TRANSITIONS ----------
+class TestTransitionTable(unittest.TestCase):
+    def test_transition_table(self):
+        self.assertEqual(workflow.ALLOWED_TRANSITIONS["requested"], "approved")
+        self.assertEqual(workflow.ALLOWED_TRANSITIONS["approved"], "issued")
+        self.assertEqual(workflow.ALLOWED_TRANSITIONS["issued"], "returned")
+        self.assertIsNone(workflow.ALLOWED_TRANSITIONS["returned"])
+
+
+# ---------- _check_transition ----------
+class TestCheckTransition(unittest.TestCase):
+    def test_allows_next_step(self):
+        workflow._check_transition({"status": "requested"}, "approved")  # no raise
+
+    def test_rejects_bad_moves(self):
+        bad_moves = [
+            ("requested", "issued"),    # skip
+            ("requested", "returned"),  # skip
+            ("approved", "approved"),   # repeat
+            ("approved", "returned"),   # skip
+            ("issued", "approved"),     # backwards
+            ("returned", "approved"),   # nothing follows returned
+            ("returned", "returned"),
+        ]
+        for current, attempted in bad_moves:
+            with self.subTest(current=current, attempted=attempted):
+                with self.assertRaises(ValueError):
+                    workflow._check_transition({"status": current}, attempted)
+
+    def test_message_names_both_statuses(self):
+        with self.assertRaises(ValueError) as ctx:
+            workflow._check_transition({"status": "requested"}, "issued")
+        self.assertIn("requested", str(ctx.exception))
+        self.assertIn("issued", str(ctx.exception))
+
+
+# ---------- approve_request ----------
+class TestApproveRequest(WorkflowTestCase):
+    def test_happy_path(self):
+        fake = self.install(make("requested"))
+        result = workflow.approve_request(1, "Dr. Smith")
+        self.assertEqual(result["status"], "approved")
+        self.assertEqual(result["approved_by"], "Dr. Smith")
+        self.assertEqual(len(fake.update_calls), 1)
+
+    def test_invalid_approver_leaves_record_untouched(self):
+        for bad in [None, "", "   "]:
+            with self.subTest(approver=bad):
+                fake = self.install(make("requested"))
+                with self.assertRaises(ValueError):
+                    workflow.approve_request(1, bad)
+                self.assertEqual(fake.update_calls, [])
+                self.assertEqual(fake.records[1]["status"], "requested")
+
+    def test_wrong_state_leaves_record_untouched(self):
+        for status in ["approved", "issued", "returned"]:
+            with self.subTest(status=status):
+                fake = self.install(make(status, approved_by="Dr. Smith"))
+                with self.assertRaises(ValueError):
+                    workflow.approve_request(1, "Someone Else")
+                self.assertEqual(fake.update_calls, [])
+                self.assertEqual(fake.records[1]["approved_by"], "Dr. Smith")
+
+
+# ---------- issue_card ----------
+class TestIssueCard(WorkflowTestCase):
+    def test_happy_path(self):
+        fake = self.install(make("approved", approved_by="Dr. Smith"))
+        result = workflow.issue_card(1)
+        self.assertEqual(result["status"], "issued")
+        self.assertEqual(len(fake.update_calls), 1)
+
+    def test_wrong_state_leaves_record_untouched(self):
+        for status in ["requested", "issued", "returned"]:
+            with self.subTest(status=status):
+                fake = self.install(make(status, approved_by="Dr. Smith"))
+                with self.assertRaises(ValueError):
+                    workflow.issue_card(1)
+                self.assertEqual(fake.update_calls, [])
+
+    def test_without_approver_is_rejected(self):
+        for approver in [None, "", "   "]:
+            with self.subTest(approver=approver):
+                fake = self.install(make("approved", approved_by=approver))
+                with self.assertRaises(ValueError):
+                    workflow.issue_card(1)
+                self.assertEqual(fake.update_calls, [])
+                self.assertEqual(fake.records[1]["status"], "approved")
+
+    def test_missing_approver_key_is_rejected(self):
+        fake = self.install({1: {"id": 1, "status": "approved"}})  # no approved_by key
         with self.assertRaises(ValueError):
-            self.registry.create_request("F002", "platinum_access")
+            workflow.issue_card(1)
+        self.assertEqual(fake.update_calls, [])
 
-    def test_blank_fellow_id(self):
+
+# ---------- return_card ----------
+class TestReturnCard(WorkflowTestCase):
+    def test_happy_path(self):
+        fake = self.install(make("issued", approved_by="Dr. Smith"))
+        result = workflow.return_card(1)
+        self.assertEqual(result["status"], "returned")
+        self.assertEqual(len(fake.update_calls), 1)
+
+    def test_wrong_state_leaves_record_untouched(self):
+        for status in ["requested", "approved", "returned"]:
+            with self.subTest(status=status):
+                fake = self.install(make(status, approved_by="Dr. Smith"))
+                with self.assertRaises(ValueError):
+                    workflow.return_card(1)
+                self.assertEqual(fake.update_calls, [])
+
+
+# ---------- Full lifecycle ----------
+class TestLifecycle(WorkflowTestCase):
+    def test_full_lifecycle_then_locked(self):
+        fake = self.install(make("requested"))
+        workflow.approve_request(1, "Dr. Smith")
+        workflow.issue_card(1)
+        workflow.return_card(1)
+        self.assertEqual(fake.records[1]["status"], "returned")
+
+        # nothing may follow "returned"
         with self.assertRaises(ValueError):
-            self.registry.create_request("   ", "student")
-
-    # 3. Illegal shortcut transition check (Case 2)
-    def test_illegal_issue_before_approval(self):
-        rid = self.registry.create_request("F001", "student")
+            workflow.approve_request(1, "Dr. Smith")
         with self.assertRaises(ValueError):
-            self.workflow.issue_card(rid)
-        # Ensure status did not change
-        self.assertEqual(self.registry.get_request(rid)["status"], "requested")
-
-    # 4. Empty approver criteria check (Case 3)
-    def test_blank_approver(self):
-        rid = self.registry.create_request("F001", "staff")
+            workflow.issue_card(1)
         with self.assertRaises(ValueError):
-            self.workflow.approve_request(rid, "   ")
-        self.assertEqual(self.registry.get_request(rid)["status"], "requested")
+            workflow.return_card(1)
+        self.assertEqual(len(fake.update_calls), 3)  # only the three valid moves wrote
 
-    # 5. Full normal workflow pipeline pass (Case 4)
-    def test_correct_full_workflow(self):
-        rid = self.registry.create_request("F001", "staff")
-        self.workflow.approve_request(rid, "M01")
-        self.assertEqual(self.registry.get_request(rid)["status"], "approved")
 
-        self.workflow.issue_card(rid)
-        self.assertEqual(self.registry.get_request(rid)["status"], "issued")
-        
-        self.workflow.return_card(rid)
-        self.assertEqual(self.registry.get_request(rid)["status"], "returned")
+# ---------- Missing record ----------
+class TestMissingRecord(WorkflowTestCase):
+    def test_unknown_request_id_raises_before_any_write(self):
+        fake = self.install(make("requested"))
+        with self.assertRaises(Exception):
+            workflow.approve_request(999, "Dr. Smith")
+        self.assertEqual(fake.update_calls, [])
 
-    # 6. Double usage/return terminal state rejection check (Case 5)
-    def test_double_return_rejection(self):
-        rid = self.registry.create_request("F001", "visitor")
-        self.workflow.approve_request(rid, "M01")
-        self.workflow.issue_card(rid)
-        self.workflow.return_card(rid)
-        
-        with self.assertRaises(ValueError):
-            self.workflow.return_card(rid)
-            
-        with self.assertRaises(ValueError):
-            self.workflow.issue_card(rid)
 
-    # 7. Uniqueness high water-marks persistent across safe environments (Case 6)
-    def test_unique_ids_after_reload(self):
-        self.registry.create_request("F001", "student")
-        self.registry.save_requests(self.test_file)
-        
-        new_registry = RequestRegistry()
-        new_registry.load_requests(self.test_file)
-        next_id = new_registry.create_request("F002", "staff")
-        self.assertEqual(next_id, "A002")
+if __name__ == "__main__":
+    unittest.main()
 
-    # 8. Malformed components payload file handling execution criteria (Case 7)
-    def test_corrupted_json_handling(self):
-        with open(self.test_file, "w") as f:
-            f.write("{invalid-json-payload-corrupted}")
-        
-        with self.assertRaises(json.JSONDecodeError):
-            self.registry.load_requests(self.test_file)
