@@ -30,7 +30,6 @@ def next_id():
         if number > highest:
             highest = number
     return f"{ID_PREFIX}{highest + 1:0{ID_DIGIT_COUNT}d}"
-print(next_id())
 # ---------- Create ----------
 def create_request(fellow_id, card_type):
     validate_fellow_id(fellow_id)
@@ -47,6 +46,8 @@ def create_request(fellow_id, card_type):
     return dict(requested)
 
 # ---------- Lookup (read-only) ----------
+def list_requests():
+    return [dict(record) for record in _requests.values()]
 def get_request(request_id):
     validate_request_id(request_id)
 
