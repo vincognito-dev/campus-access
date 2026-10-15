@@ -3,7 +3,15 @@ import os
 from campus_access import storage
 from campus_access.workflow import approve_request, issue_card, return_card
 
-
+def _format_request(request: dict) -> str:
+    approver = request["approved_by"] if request["approved_by"] else "none"
+    return (
+        f"ID: {request['id']}\n"
+        f"Fellow ID: {request['fellow_id']}\n"
+        f"Card type: {request['card_type']}\n"
+        f"Status: {request['status']}\n"
+        f"Approved by: {approver}"
+    )
 def _save_before_quit(storage_path: str) -> bool:
     """Offer to save. Return True if it is safe to quit."""
     answer = input("Save before quitting? (y/n): ").strip().lower()
@@ -16,7 +24,15 @@ def _save_before_quit(storage_path: str) -> bool:
     except OSError as exc:
         print(f"Save failed: {exc}")
         return False
-
+def _format_request(request: dict) -> str:
+    approver = request["approved_by"] if request["approved_by"] else "none"
+    return (
+        f"ID: {request['id']}\n"
+        f"Fellow ID: {request['fellow_id']}\n"
+        f"Card type: {request['card_type']}\n"
+        f"Status: {request['status']}\n"
+        f"Approved by: {approver}"
+    )
 
 def run_menu() -> None:
     """Run a simple interactive campus access-card request manager."""
@@ -29,9 +45,10 @@ def run_menu() -> None:
             print(f"Loaded requests from {storage_path}")
         except (ValueError, OSError) as exc:
             print(f"Could not load {storage_path}: {exc}")
+# ---------- List (read-only) ----------
 
     while True:
-        print("\nCampus Access Card Manager")
+        print("====CAMPUS ACCESS CARD MANAGER====\n")
         print("1. Create request")
         print("2. View request")
         print("3. Approve request")
@@ -41,8 +58,9 @@ def run_menu() -> None:
         print("7. Save to JSON")
         print("8. Reload from JSON")
         print("9. Quit")
+        print("__________________________________")
 
-        choice = input("Select an option: ").strip()
+        choice = input("Select an option:  ").strip()
         wants_quit = choice == "9" or choice.lower() in {"q", "quit", "exit"}
 
         if wants_quit:
@@ -60,7 +78,7 @@ def run_menu() -> None:
 
             elif choice == "2":
                 request_id = input("Request ID: ").strip()
-                print(storage.get_request(request_id))
+                print(_format_request(storage.get_request(request_id)))
 
             elif choice == "3":
                 request_id = input("Request ID: ").strip()
@@ -83,7 +101,8 @@ def run_menu() -> None:
                 if not requests:
                     print("No requests yet.")
                 for request in requests:
-                    print(request)
+                    print(_format_request(request))
+                    print("-" * 20)
 
             elif choice == "7":
                 storage.save_requests(storage_path)
