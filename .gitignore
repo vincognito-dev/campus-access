@@ -227,3 +227,7 @@ requests.json
 .vscode/
 .idea/
 *.tmp
+__pycache__/
+*.pyc
+*.tmp
+requests.json

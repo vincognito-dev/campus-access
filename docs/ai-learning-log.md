@@ -9,13 +9,13 @@
 ## Cycle 2: ASCII digits
 - **Question:** Is `.isdigit()` enough for request IDs?
 - **AI explanation:** No. It accepts digits from other scripts, such as full-width `１`.
-- **My experiment:** Ran `"A００１".isdigit()` and `validate_request_id("A００１")`. Results: [fill in]
+- **My experiment:** Ran `"A００１".isdigit()` and `validate_request_id("A００１")`. Results: Request ID must contain only digits 0-9 after the prefix
 - **Decision:** Check each character against `"0123456789"`.
 
 ## Cycle 3: The "A" bug
 - **Question:** Why did `validate_request_id("A")` pass?
 - **AI explanation:** A slice of a string is always a string, even an empty one, so my check never fired.
-- **My experiment:** Ran `"A"` before and after the fix. Results: [fill in]
+- **My experiment:** Ran `"A"` before and after the fix. Results: Request ID must have digits after the prefix
 - **Decision:** Reject when `digits == ""`.
 
 ## What I can explain without AI

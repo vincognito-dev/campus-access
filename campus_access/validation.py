@@ -42,3 +42,4 @@ def validate_approver(approved_by):
         raise ValueError("Approver must be a string")
     if approved_by.strip() == "":
         raise ValueError("Approver must not be blank")
+    
