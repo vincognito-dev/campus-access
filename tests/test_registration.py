@@ -1,4 +1,5 @@
 import unittest
+from campus_access import storage
 from campus_access.validation import (
     validate_request_id,
     validate_card_type,
