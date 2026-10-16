@@ -24,15 +24,6 @@ def _save_before_quit(storage_path: str) -> bool:
     except OSError as exc:
         print(f"Save failed: {exc}")
         return False
-def _format_request(request: dict) -> str:
-    approver = request["approved_by"] if request["approved_by"] else "none"
-    return (
-        f"ID: {request['id']}\n"
-        f"Fellow ID: {request['fellow_id']}\n"
-        f"Card type: {request['card_type']}\n"
-        f"Status: {request['status']}\n"
-        f"Approved by: {approver}"
-    )
 
 def run_menu() -> None:
     """Run a simple interactive campus access-card request manager."""
@@ -48,7 +39,8 @@ def run_menu() -> None:
 # ---------- List (read-only) ----------
 
     while True:
-        print("====CAMPUS ACCESS CARD MANAGER====\n")
+        print("__________________________________")
+        print("Campus Access Card Manager\n")
         print("1. Create request")
         print("2. View request")
         print("3. Approve request")
@@ -58,11 +50,10 @@ def run_menu() -> None:
         print("7. Save to JSON")
         print("8. Reload from JSON")
         print("9. Quit")
-        print("__________________________________")
-
-        choice = input("Select an option:  ").strip()
+        print("__________________________________\n")
+        choice = input("Select an option: ").strip()
         wants_quit = choice == "9" or choice.lower() in {"q", "quit", "exit"}
-
+        
         if wants_quit:
             if _save_before_quit(storage_path):
                 print("Goodbye.")

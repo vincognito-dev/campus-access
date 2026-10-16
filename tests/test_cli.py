@@ -31,7 +31,7 @@ class CliTests(unittest.TestCase):
         output = self.run_cli(["junk", "quit", "n"])
         self.assertIn("Invalid option", output)
         # menu was shown again after the bad input
-        self.assertEqual(output.count("Campus Access Card Manager"), 0 != 2)
+        self.assertEqual(output.count("Campus Access Card Manager"), 2)
 
     def test_cli_create_then_quit(self):
         output = self.run_cli(["1", "F011", "visitor", "quit", "n"])
